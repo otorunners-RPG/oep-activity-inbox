@@ -15,17 +15,11 @@ async function registerServiceWorker() {
 
     await navigator.serviceWorker.ready;
 
-    if (statusEl) {
-      statusEl.textContent = "ACTIVE";
-    }
-
+    if (statusEl) statusEl.textContent = "ACTIVE";
     console.log("OEP service worker ready:", registration.scope);
 
   } catch (error) {
-    if (statusEl) {
-      statusEl.textContent = "ERROR";
-    }
-
+    if (statusEl) statusEl.textContent = "ERROR";
     console.error("Service Worker registration failed:", error);
   }
 }
@@ -39,6 +33,11 @@ function updateDisplayMode() {
     window.navigator.standalone === true;
 
   el.textContent = standalone ? "INSTALLED / STANDALONE" : "BROWSER";
+
+  const installButton = document.querySelector("#installButton");
+  if (installButton && standalone) {
+    installButton.hidden = true;
+  }
 }
 
 window.addEventListener("beforeinstallprompt", event => {
@@ -46,10 +45,7 @@ window.addEventListener("beforeinstallprompt", event => {
   deferredInstallPrompt = event;
 
   const button = document.querySelector("#installButton");
-
-  if (button) {
-    button.hidden = false;
-  }
+  if (button) button.hidden = false;
 });
 
 async function installPwa() {
@@ -62,7 +58,6 @@ async function installPwa() {
 
   deferredInstallPrompt.prompt();
   await deferredInstallPrompt.userChoice;
-
   deferredInstallPrompt = null;
 
   const button = document.querySelector("#installButton");
@@ -74,7 +69,6 @@ document.addEventListener("DOMContentLoaded", () => {
   updateDisplayMode();
 
   const installButton = document.querySelector("#installButton");
-
   if (installButton) {
     installButton.addEventListener("click", installPwa);
   }

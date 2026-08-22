@@ -8,7 +8,6 @@ function openOepDb() {
 
     request.onupgradeneeded = () => {
       const db = request.result;
-
       if (!db.objectStoreNames.contains(OEP_STORE_NAME)) {
         db.createObjectStore(OEP_STORE_NAME, { keyPath: "id" });
       }
@@ -24,12 +23,7 @@ async function saveLatestSharedPayload(payload) {
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(OEP_STORE_NAME, "readwrite");
-    const store = tx.objectStore(OEP_STORE_NAME);
-
-    store.put({
-      id: "latest",
-      ...payload
-    });
+    tx.objectStore(OEP_STORE_NAME).put({ id: "latest", ...payload });
 
     tx.oncomplete = () => {
       db.close();
@@ -49,8 +43,7 @@ async function getLatestSharedPayload() {
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(OEP_STORE_NAME, "readonly");
-    const store = tx.objectStore(OEP_STORE_NAME);
-    const request = store.get("latest");
+    const request = tx.objectStore(OEP_STORE_NAME).get("latest");
 
     request.onsuccess = () => {
       const result = request.result || null;
@@ -71,9 +64,7 @@ async function clearLatestSharedPayload() {
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(OEP_STORE_NAME, "readwrite");
-    const store = tx.objectStore(OEP_STORE_NAME);
-
-    store.delete("latest");
+    tx.objectStore(OEP_STORE_NAME).delete("latest");
 
     tx.oncomplete = () => {
       db.close();

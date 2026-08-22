@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#071a12">
 
-  <title>OEP Activity Inbox — POC</title>
+  <title>OEP Activity Inbox — Smart Extractor</title>
 
   <link rel="manifest" href="./manifest.webmanifest">
 
@@ -90,10 +90,6 @@
       padding-left: 22px;
       line-height: 1.7;
     }
-
-    code {
-      color: var(--accent);
-    }
   </style>
 </head>
 
@@ -101,7 +97,7 @@
 <main>
 
   <h1>OEP ACTIVITY INBOX</h1>
-  <p class="subtitle">Checkpoint 11.2A — Android Local OCR POC</p>
+  <p class="subtitle">Checkpoint 11.2B — Smart Activity Extractor</p>
 
   <section class="card">
     <div class="row">
@@ -120,21 +116,19 @@
   </section>
 
   <section class="card">
-    <h2>Android Test</h2>
+    <h2>Current Test</h2>
 
     <ol>
-      <li>Open this page in <strong>Chrome Android</strong>.</li>
-      <li>Install / Add OEP Activity Inbox to the Home Screen.</li>
-      <li>Close Chrome.</li>
-      <li>Open one GPS activity in Strava.</li>
-      <li>Tap <strong>Share</strong>.</li>
-      <li>Look for <strong>Send to OEP</strong> / <strong>OEP Activity Inbox</strong>.</li>
-      <li>Select it and inspect the received payload.</li>
+      <li>Share a normal GPS activity from Strava.</li>
+      <li>Select <strong>Send to OEP</strong>.</li>
+      <li>Tap <strong>SMART EXTRACT ACTIVITY</strong>.</li>
+      <li>Check detected Distance, Duration and Pace.</li>
+      <li>Review the mathematical consistency result.</li>
     </ol>
   </section>
 
   <a class="button" href="./share.html">
-    OPEN SHARE DEBUG PAGE
+    OPEN SMART EXTRACTOR
   </a>
 
 </main>

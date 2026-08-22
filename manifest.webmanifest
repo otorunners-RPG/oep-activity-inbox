@@ -33,9 +33,7 @@
       "files": [
         {
           "name": "activityImage",
-          "accept": [
-            "image/*"
-          ]
+          "accept": ["image/*"]
         }
       ]
     }
