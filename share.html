@@ -298,7 +298,7 @@
 
   <h1>SMART ACTIVITY EXTRACTOR</h1>
   <p class="subtitle">
-    Checkpoint 11.2C — confirm validated activity before the next pipeline step.
+    Checkpoint 11.2D — submit confirmed structured activity to Google Sheet.
   </p>
 
   <section id="statusCard" class="card">
@@ -381,7 +381,7 @@
         <h3 class="confirm-title">CONFIRM ACTIVITY</h3>
 
         <p id="confirmNote" class="confirm-note">
-          Confirm only if the extracted activity above matches the Strava share.
+          Confirm to submit this validated activity to the OEP Activity Inbox.
         </p>
 
         <button id="confirmActivityButton" class="primary" hidden>
@@ -393,7 +393,7 @@
         </div>
 
         <div id="confirmSuccess" class="confirm-success" hidden>
-          ACTIVITY CONFIRMED ✅
+          ACTIVITY SUBMITTED ✅
         </div>
       </section>
 
@@ -424,6 +424,7 @@
 <script src="./app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="./smart-extractor.js"></script>
+<script src="./submission.js"></script>
 
 <script>
   let currentImageBlob = null;
@@ -713,15 +714,13 @@
 
   document.querySelector("#confirmActivityButton").addEventListener(
     "click",
-    () => {
+    async () => {
       if (
         !currentExtractionResult ||
         currentExtractionResult.validation.status !== "MATCHED"
       ) {
         return;
       }
-
-      activityConfirmed = true;
 
       const button =
         document.querySelector("#confirmActivityButton");
@@ -732,11 +731,41 @@
       const note =
         document.querySelector("#confirmNote");
 
-      button.hidden = true;
-      success.hidden = false;
+      button.disabled = true;
+      button.textContent = "SUBMITTING...";
+
+      success.hidden = true;
 
       note.textContent =
-        "Activity has been confirmed. No data is submitted to Google Sheet in Checkpoint 11.2C.";
+        "Submitting confirmed activity to OEP Activity Inbox...";
+
+      try {
+
+        await submitConfirmedActivity(
+          currentExtractionResult,
+          currentSourceText
+        );
+
+        activityConfirmed = true;
+
+        button.hidden = true;
+        success.hidden = false;
+
+        note.textContent =
+          "Submission sent. Verify the new row in Google Sheet → ACTIVITY_INBOX.";
+
+      } catch (error) {
+
+        console.error(error);
+
+        button.disabled = false;
+        button.textContent =
+          "CONFIRM ACTIVITY";
+
+        note.textContent =
+          "Submission failed: " +
+          (error.message || "Unknown error");
+      }
     }
   );
 
