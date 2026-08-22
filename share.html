@@ -248,6 +248,48 @@
         grid-template-columns: 1fr;
       }
     }
+  
+    .confirm-card {
+      margin-top: 18px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(0,0,0,.15);
+    }
+
+    .confirm-title {
+      margin: 0 0 8px;
+      font-weight: 900;
+      color: var(--text);
+    }
+
+    .confirm-note {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: .9rem;
+    }
+
+    .confirm-success {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid var(--ok);
+      border-radius: 12px;
+      color: var(--ok);
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .confirm-blocked {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid var(--warn);
+      border-radius: 12px;
+      color: var(--warn);
+      font-weight: 800;
+      text-align: center;
+    }
+
   </style>
 </head>
 
@@ -256,7 +298,7 @@
 
   <h1>SMART ACTIVITY EXTRACTOR</h1>
   <p class="subtitle">
-    Checkpoint 11.2B.2 — bottom-strip adaptive OCR + parser + consistency check.
+    Checkpoint 11.2C — confirm validated activity before the next pipeline step.
   </p>
 
   <section id="statusCard" class="card">
@@ -334,6 +376,27 @@
         <div id="validationExpected"></div>
       </div>
 
+
+      <section id="confirmationSection" class="confirm-card" hidden>
+        <h3 class="confirm-title">CONFIRM ACTIVITY</h3>
+
+        <p id="confirmNote" class="confirm-note">
+          Confirm only if the extracted activity above matches the Strava share.
+        </p>
+
+        <button id="confirmActivityButton" class="primary" hidden>
+          CONFIRM ACTIVITY
+        </button>
+
+        <div id="confirmBlocked" class="confirm-blocked" hidden>
+          Activity cannot be confirmed because validation did not pass.
+        </div>
+
+        <div id="confirmSuccess" class="confirm-success" hidden>
+          ACTIVITY CONFIRMED ✅
+        </div>
+      </section>
+
       <details>
         <summary>SHOW OCR DEBUG</summary>
 
@@ -366,6 +429,8 @@
   let currentImageBlob = null;
   let currentObjectUrl = null;
   let currentSourceText = "";
+  let currentExtractionResult = null;
+  let activityConfirmed = false;
 
   function textOrDash(value) {
     return value === undefined || value === null || value === ""
@@ -471,6 +536,27 @@
 
       button.disabled = true;
       resultPanel.hidden = true;
+
+      currentExtractionResult = null;
+      activityConfirmed = false;
+
+      const confirmationSection =
+        document.querySelector("#confirmationSection");
+
+      const confirmButton =
+        document.querySelector("#confirmActivityButton");
+
+      const confirmBlocked =
+        document.querySelector("#confirmBlocked");
+
+      const confirmSuccess =
+        document.querySelector("#confirmSuccess");
+
+      confirmationSection.hidden = true;
+      confirmButton.hidden = true;
+      confirmButton.disabled = false;
+      confirmBlocked.hidden = true;
+      confirmSuccess.hidden = true;
 
       try {
         const result =
@@ -583,6 +669,32 @@
           debugHost.appendChild(wrapper);
         });
 
+        currentExtractionResult = result;
+
+        const confirmationSection =
+          document.querySelector("#confirmationSection");
+
+        const confirmButton =
+          document.querySelector("#confirmActivityButton");
+
+        const confirmBlocked =
+          document.querySelector("#confirmBlocked");
+
+        const confirmSuccess =
+          document.querySelector("#confirmSuccess");
+
+        confirmationSection.hidden = false;
+        confirmSuccess.hidden = true;
+
+        if (result.validation.status === "MATCHED") {
+          confirmButton.hidden = false;
+          confirmButton.disabled = false;
+          confirmBlocked.hidden = true;
+        } else {
+          confirmButton.hidden = true;
+          confirmBlocked.hidden = false;
+        }
+
         resultPanel.hidden = false;
 
       } catch (error) {
@@ -595,6 +707,36 @@
       } finally {
         button.disabled = false;
       }
+    }
+  );
+
+
+  document.querySelector("#confirmActivityButton").addEventListener(
+    "click",
+    () => {
+      if (
+        !currentExtractionResult ||
+        currentExtractionResult.validation.status !== "MATCHED"
+      ) {
+        return;
+      }
+
+      activityConfirmed = true;
+
+      const button =
+        document.querySelector("#confirmActivityButton");
+
+      const success =
+        document.querySelector("#confirmSuccess");
+
+      const note =
+        document.querySelector("#confirmNote");
+
+      button.hidden = true;
+      success.hidden = false;
+
+      note.textContent =
+        "Activity has been confirmed. No data is submitted to Google Sheet in Checkpoint 11.2C.";
     }
   );
 

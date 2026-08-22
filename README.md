@@ -1,26 +1,35 @@
-# OEP Activity Inbox — Checkpoint 11.2B.2
+# OEP Activity Inbox — Checkpoint 11.2C
 
-Bottom-Strip Adaptive Extractor.
+Confirmation Layer only.
 
-Why this update exists:
-- 3 of 4 Strava share variants already work.
-- The remaining failing variant places tiny stats in a very thin bottom strip.
-- Wide ROIs still include too much empty black space and route/logo noise.
+Scope:
+- Keep the 11.2B.2 extractor unchanged.
+- Show extracted Sport / Distance / Duration / Pace.
+- If validation = MATCHED, show `CONFIRM ACTIVITY`.
+- No edit capability.
+- If validation is not MATCHED, confirmation is blocked.
+- Confirmation is local UI state only.
+- No Google Sheet submission yet. That remains Checkpoint 11.2D.
 
-What changed:
-- Added dedicated bottom-strip ROIs.
-- Added split metric-cell ROIs:
-  - BLACK_CELL_DISTANCE
-  - BLACK_CELL_PACE
-  - BLACK_CELL_TIME
-- Increased upscale for tiny-bottom candidates.
-- Added PSM 7 for single-line / compact metric passes.
-- Kept mathematical consistency scoring as the final selector.
+## Update
 
-Update:
-- Replace the repo root with this package.
-- Open:
-  https://otorunners-rpg.github.io/oep-activity-inbox/?v=6
+Upload/replace the whole package into the root of the existing
+`oep-activity-inbox` repository.
+
+Service worker cache: v7
+
+Open:
+`https://otorunners-rpg.github.io/oep-activity-inbox/?v=7`
 
 Expected title:
-Checkpoint 11.2B.2 — Bottom-Strip Adaptive Extractor
+`Checkpoint 11.2C — Confirmation Layer`
+
+## Acceptance Criteria
+
+1. Share Strava activity to OEP.
+2. Smart extraction completes.
+3. MATCHED activity shows `CONFIRM ACTIVITY`.
+4. Tapping confirm shows `ACTIVITY CONFIRMED`.
+5. No editable metric field exists.
+6. MISMATCH / NEEDS_REVIEW cannot be confirmed.
+7. No Google Sheet write occurs in this phase.
