@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071a12">
+
+  <title>OEP Share Debug</title>
+
+  <link rel="manifest" href="./manifest.webmanifest">
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071a12;
+      --panel: #10291e;
+      --line: #9a7840;
+      --text: #f3ead3;
+      --muted: #bcb49f;
+      --accent: #e4aa33;
+      --ok: #98ca74;
+      --warn: #efb34b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }
+
+    h1 {
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      margin-top: 0;
+      color: var(--muted);
+    }
+
+    .card {
+      margin-top: 20px;
+      padding: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .field {
+      margin: 14px 0;
+    }
+
+    .label {
+      display: block;
+      color: var(--muted);
+      font-size: .85rem;
+      margin-bottom: 4px;
+    }
+
+    .value {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-weight: 700;
+    }
+
+    img {
+      display: block;
+      width: 100%;
+      max-height: 520px;
+      object-fit: contain;
+      margin-top: 16px;
+      border-radius: 12px;
+      background: #000;
+    }
+
+    button, a.button {
+      display: block;
+      width: 100%;
+      padding: 14px 16px;
+      margin-top: 14px;
+      border: 0;
+      border-radius: 12px;
+      text-align: center;
+      text-decoration: none;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: #18120a;
+    }
+
+    .secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    .ok {
+      color: var(--ok);
+      font-weight: 800;
+    }
+
+    .warning {
+      color: var(--warn);
+    }
+  </style>
+</head>
+
+<body>
+<main>
+
+  <h1>SHARE DEBUG</h1>
+  <p class="subtitle">
+    Checkpoint 11.1B — inspect what Android / Strava actually shared.
+  </p>
+
+  <section id="statusCard" class="card">
+    Loading latest shared payload...
+  </section>
+
+  <section id="payloadCard" class="card" hidden>
+
+    <div class="field">
+      <span class="label">Received At</span>
+      <span id="receivedAt" class="value"></span>
+    </div>
+
+    <div class="field">
+      <span class="label">Title</span>
+      <span id="title" class="value"></span>
+    </div>
+
+    <div class="field">
+      <span class="label">Text</span>
+      <span id="text" class="value"></span>
+    </div>
+
+    <div class="field">
+      <span class="label">URL</span>
+      <span id="url" class="value"></span>
+    </div>
+
+    <div class="field">
+      <span class="label">Has File</span>
+      <span id="hasFile" class="value"></span>
+    </div>
+
+    <div class="field">
+      <span class="label">File Name</span>
+      <span id="fileName" class="value"></span>
+    </div>
+
+    <div class="field">
+      <span class="label">MIME Type</span>
+      <span id="mimeType" class="value"></span>
+    </div>
+
+    <div class="field">
+      <span class="label">File Size</span>
+      <span id="fileSize" class="value"></span>
+    </div>
+
+    <img id="preview" alt="Shared activity preview" hidden>
+
+  </section>
+
+  <button id="clearButton" class="secondary">
+    CLEAR DEBUG PAYLOAD
+  </button>
+
+  <a class="button primary" href="./">
+    BACK TO HOME
+  </a>
+
+</main>
+
+<script src="./db.js"></script>
+<script src="./app.js"></script>
+
+<script>
+  let currentObjectUrl = null;
+
+  function textOrDash(value) {
+    if (value === undefined || value === null || value === "") {
+      return "—";
+    }
+    return String(value);
+  }
+
+  function formatBytes(bytes) {
+    const value = Number(bytes || 0);
+
+    if (!value) return "0 B";
+
+    const units = ["B", "KB", "MB", "GB"];
+    const index = Math.min(
+      Math.floor(Math.log(value) / Math.log(1024)),
+      units.length - 1
+    );
+
+    return (
+      (value / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 2) +
+      " " +
+      units[index]
+    );
+  }
+
+  async function loadLatestPayload() {
+    const statusCard = document.querySelector("#statusCard");
+    const payloadCard = document.querySelector("#payloadCard");
+
+    const params = new URLSearchParams(location.search);
+
+    if (params.get("error")) {
+      statusCard.innerHTML =
+        '<span class="warning">Share error: ' +
+        params.get("error") +
+        "</span>";
+    }
+
+    try {
+      const payload = await getLatestSharedPayload();
+
+      if (!payload) {
+        statusCard.innerHTML =
+          '<strong>No shared payload yet.</strong><br><br>' +
+          'Install this PWA, then open Strava → Activity → Share → Send to OEP.';
+        payloadCard.hidden = true;
+        return;
+      }
+
+      statusCard.innerHTML =
+        '<span class="ok">PAYLOAD RECEIVED ✅</span>';
+
+      payloadCard.hidden = false;
+
+      document.querySelector("#receivedAt").textContent =
+        textOrDash(payload.receivedAt);
+
+      document.querySelector("#title").textContent =
+        textOrDash(payload.title);
+
+      document.querySelector("#text").textContent =
+        textOrDash(payload.text);
+
+      document.querySelector("#url").textContent =
+        textOrDash(payload.url);
+
+      document.querySelector("#hasFile").textContent =
+        payload.hasFile ? "YES" : "NO";
+
+      document.querySelector("#fileName").textContent =
+        textOrDash(payload.fileName);
+
+      document.querySelector("#mimeType").textContent =
+        textOrDash(payload.mimeType);
+
+      document.querySelector("#fileSize").textContent =
+        formatBytes(payload.fileSize);
+
+      const preview = document.querySelector("#preview");
+
+      if (
+        payload.hasFile &&
+        payload.fileBlob &&
+        String(payload.mimeType || "").startsWith("image/")
+      ) {
+        if (currentObjectUrl) {
+          URL.revokeObjectURL(currentObjectUrl);
+        }
+
+        currentObjectUrl = URL.createObjectURL(payload.fileBlob);
+
+        preview.src = currentObjectUrl;
+        preview.hidden = false;
+      } else {
+        preview.hidden = true;
+      }
+
+    } catch (error) {
+      statusCard.innerHTML =
+        '<span class="warning">Unable to read payload: ' +
+        error.message +
+        "</span>";
+    }
+  }
+
+  document.querySelector("#clearButton").addEventListener(
+    "click",
+    async () => {
+      await clearLatestSharedPayload();
+
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
+
+      location.reload();
+    }
+  );
+
+  loadLatestPayload();
+</script>
+</body>
+</html>
