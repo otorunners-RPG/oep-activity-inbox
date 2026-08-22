@@ -256,7 +256,7 @@
 
   <h1>SMART ACTIVITY EXTRACTOR</h1>
   <p class="subtitle">
-    Checkpoint 11.2B — crop + preprocess + OCR + parser + consistency check.
+    Checkpoint 11.2B.1 — adaptive multi-pass OCR + parser + consistency check.
   </p>
 
   <section id="statusCard" class="card">
@@ -338,13 +338,8 @@
         <summary>SHOW OCR DEBUG</summary>
 
         <div class="field">
-          <span class="label">Preprocessed Stats Region</span>
-          <div id="processedCanvasHost"></div>
-        </div>
-
-        <div class="field">
-          <span class="label">Raw Region OCR</span>
-          <textarea id="rawOcr" readonly></textarea>
+          <span class="label">Adaptive OCR Passes</span>
+          <div id="debugPassesHost"></div>
         </div>
       </details>
 
@@ -523,20 +518,70 @@
               )
             : "";
 
-        document.querySelector("#rawOcr").value =
-          result.rawText;
+        if (result.selectedRaw) {
+          const selected =
+            [
+              result.selectedRaw.distance
+                ? "Distance OCR: " + result.selectedRaw.distance
+                : "",
+              result.selectedRaw.duration
+                ? "Duration OCR: " + result.selectedRaw.duration
+                : "",
+              result.selectedRaw.pace
+                ? "Pace OCR: " + result.selectedRaw.pace
+                : ""
+            ]
+            .filter(Boolean)
+            .join(" • ");
 
-        const host =
-          document.querySelector("#processedCanvasHost");
+          if (selected) {
+            document.querySelector("#validationMessage").textContent +=
+              " Selected: " + selected;
+          }
+        }
 
-        host.innerHTML = "";
+        const debugHost =
+          document.querySelector("#debugPassesHost");
 
-        result.processedCanvas.id =
-          "processedStatsCanvas";
+        debugHost.innerHTML = "";
 
-        host.appendChild(
-          result.processedCanvas
-        );
+        result.debugPasses.forEach((pass, index) => {
+          const wrapper = document.createElement("div");
+          wrapper.style.marginTop = "18px";
+
+          const title = document.createElement("div");
+          title.className = "label";
+          title.textContent =
+            (index + 1) + ". " +
+            pass.roiName + " / " +
+            pass.passName;
+
+          const canvasClone =
+            document.createElement("canvas");
+
+          canvasClone.width =
+            pass.canvas.width;
+
+          canvasClone.height =
+            pass.canvas.height;
+
+          canvasClone
+            .getContext("2d")
+            .drawImage(pass.canvas, 0, 0);
+
+          const textArea =
+            document.createElement("textarea");
+
+          textArea.readOnly = true;
+          textArea.value =
+            pass.text || "(no text detected)";
+
+          wrapper.appendChild(title);
+          wrapper.appendChild(canvasClone);
+          wrapper.appendChild(textArea);
+
+          debugHost.appendChild(wrapper);
+        });
 
         resultPanel.hidden = false;
 

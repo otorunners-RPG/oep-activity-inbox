@@ -33,20 +33,13 @@ async function getSmartWorker() {
   }
 
   setSmartStatus("Preparing OCR engine...");
-  setSmartProgress(1);
+  setSmartProgress(2);
 
   smartOcrWorker = await Tesseract.createWorker("eng", 1, {
     logger: message => {
-      if (message && typeof message.progress === "number") {
-        setSmartProgress(message.progress * 100);
-      }
-
+      // We control overall progress ourselves because extraction is multi-pass.
       if (message && message.status) {
-        setSmartStatus(
-          String(message.status)
-            .replaceAll("_", " ")
-            .toUpperCase()
-        );
+        console.log("Tesseract:", message.status, message.progress);
       }
     }
   });
@@ -81,7 +74,10 @@ function loadImageFromBlob(blob) {
 function averageLuminance(image) {
   const canvas = document.createElement("canvas");
   const width = 64;
-  const height = Math.max(64, Math.round((image.height / image.width) * width));
+  const height = Math.max(
+    64,
+    Math.round((image.height / image.width) * width)
+  );
 
   canvas.width = width;
   canvas.height = height;
@@ -100,7 +96,7 @@ function averageLuminance(image) {
     const b = data[i + 2];
 
     total += (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
-    count += 1;
+    count++;
   }
 
   return count ? total / count : 0;
@@ -112,7 +108,7 @@ function classifyLayout(image) {
 
   if (luminance < 85) {
     return {
-      name: ratio > 1.35 ? "BLACK_VERTICAL" : "BLACK_COMPACT",
+      name: ratio > 1.35 ? "BLACK_ADAPTIVE" : "BLACK_COMPACT",
       luminance
     };
   }
@@ -123,40 +119,49 @@ function classifyLayout(image) {
   };
 }
 
-function getRoi(layout, image) {
-  if (layout.name === "MAP_CARD") {
-    return {
-      x: Math.round(image.width * 0.04),
-      y: Math.round(image.height * 0.55),
-      w: Math.round(image.width * 0.92),
-      h: Math.round(image.height * 0.42)
-    };
-  }
-
-  if (layout.name === "BLACK_VERTICAL") {
-    return {
-      x: Math.round(image.width * 0.08),
-      y: Math.round(image.height * 0.08),
-      w: Math.round(image.width * 0.84),
-      h: Math.round(image.height * 0.58)
-    };
-  }
-
+function makeRoi(image, x, y, w, h, name) {
   return {
-    x: Math.round(image.width * 0.05),
-    y: Math.round(image.height * 0.12),
-    w: Math.round(image.width * 0.90),
-    h: Math.round(image.height * 0.65)
+    name,
+    x: Math.max(0, Math.round(image.width * x)),
+    y: Math.max(0, Math.round(image.height * y)),
+    w: Math.max(1, Math.round(image.width * w)),
+    h: Math.max(1, Math.round(image.height * h))
   };
 }
 
+function getCandidateRois(layout, image) {
+  if (layout.name === "MAP_CARD") {
+    return [
+      // Existing map-card arrangement: stats are concentrated lower down.
+      makeRoi(image, 0.02, 0.52, 0.96, 0.46, "MAP_LOWER_STATS"),
+
+      // Safety pass for alternate map share cards.
+      makeRoi(image, 0.00, 0.38, 1.00, 0.60, "MAP_WIDE_LOWER")
+    ];
+  }
+
+  // Dark Strava cards are not one fixed layout:
+  // 1. large vertical stats near the top,
+  // 2. route in the middle with tiny horizontal stats near the bottom,
+  // 3. compact horizontal stats around the lower-middle.
+  return [
+    makeRoi(image, 0.04, 0.04, 0.92, 0.62, "BLACK_TOP_STACK"),
+    makeRoi(image, 0.02, 0.48, 0.96, 0.50, "BLACK_BOTTOM_BAND"),
+    makeRoi(image, 0.01, 0.30, 0.98, 0.68, "BLACK_WIDE_LOWER")
+  ];
+}
+
 function preprocessRoi(image, roi, layout) {
-  const maxScale = 4;
-  const targetWidth = 1600;
+  const targetWidth =
+    roi.name.includes("BOTTOM") || roi.name.includes("WIDE")
+      ? 2200
+      : 1800;
+
+  const maxScale = 6;
 
   const scale = Math.min(
     maxScale,
-    Math.max(2, targetWidth / Math.max(roi.w, 1))
+    Math.max(2.5, targetWidth / Math.max(roi.w, 1))
   );
 
   const canvas = document.createElement("canvas");
@@ -184,10 +189,12 @@ function preprocessRoi(image, roi, layout) {
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
 
+  // Dark cards tend to have white labels/numbers.
+  // Map cards contain white text over a more complex map, so use a higher threshold.
   const threshold =
     layout.name.startsWith("BLACK")
-      ? 145
-      : 175;
+      ? 135
+      : 188;
 
   for (let i = 0; i < data.length; i += 4) {
     const lum =
@@ -195,7 +202,7 @@ function preprocessRoi(image, roi, layout) {
       (0.7152 * data[i + 1]) +
       (0.0722 * data[i + 2]);
 
-    // Normalize to black text on white background.
+    // Convert to black glyphs on a white background.
     const value = lum >= threshold ? 0 : 255;
 
     data[i] = value;
@@ -220,127 +227,173 @@ function normalizeOcrText(text) {
     .trim();
 }
 
-function parseDistance(text) {
-  const cleaned = text
+function numericCleanup(text) {
+  return String(text || "")
     .replace(/,/g, ".")
-    .replace(/[Oo](?=\d)/g, "0");
+    .replace(/[Oo](?=\d|\s*(?:km|m|s))/gi, "0")
+    .replace(/\b[lI](?=\d)/g, "1");
+}
 
+function collectDistanceCandidates(text) {
+  const cleaned = numericCleanup(text);
+  const candidates = [];
+
+  const patterns = [
+    /(?:distance|dist[a-z]*)[\s\S]{0,50}?(\d{1,3}(?:\.\d{1,2})?)\s*k[mn]/gi,
+    /(\d{1,3}(?:\.\d{1,2})?)\s*k[mn]/gi
+  ];
+
+  patterns.forEach((pattern, patternIndex) => {
+    for (const match of cleaned.matchAll(pattern)) {
+      const value = Number(match[1]);
+
+      if (
+        Number.isFinite(value) &&
+        value > 0 &&
+        value < 1000
+      ) {
+        candidates.push({
+          value,
+          confidence: patternIndex === 0 ? 3 : 2,
+          raw: match[0]
+        });
+      }
+    }
+  });
+
+  return dedupeNumericCandidates(candidates, 0.001);
+}
+
+function collectPaceCandidates(text) {
+  const cleaned = numericCleanup(text);
   const candidates = [];
 
   const labelled =
-    cleaned.match(
-      /(?:distance|dist[a-z]*)[\s\S]{0,40}?(\d{1,3}(?:\.\d{1,2})?)\s*k[mn]/i
-    );
+    /(?:pace|pac[e3])[\s\S]{0,70}?(\d{1,2})\s*[:;]\s*(\d{1,2})(?:\s*\/?\s*k[mn])?/gi;
 
-  if (labelled) {
-    candidates.push(Number(labelled[1]));
-  }
+  for (const match of cleaned.matchAll(labelled)) {
+    const min = Number(match[1]);
+    const sec = Number(match[2]);
 
-  const genericMatches =
-    [...cleaned.matchAll(/(\d{1,3}(?:\.\d{1,2})?)\s*k[mn]/gi)];
-
-  for (const match of genericMatches) {
-    const value = Number(match[1]);
-    if (Number.isFinite(value) && value > 0 && value < 1000) {
-      candidates.push(value);
+    if (min >= 0 && min <= 60 && sec >= 0 && sec < 60) {
+      candidates.push({
+        value: (min * 60) + sec,
+        confidence: 3,
+        raw: match[0]
+      });
     }
   }
 
-  return candidates.length ? candidates[0] : null;
-}
+  const withUnit =
+    /(\d{1,2})\s*[:;]\s*(\d{1,2})\s*\/?\s*k[mn]/gi;
 
-function parsePace(text) {
-  const cleaned = text.replace(/[Oo]/g, "0");
+  for (const match of cleaned.matchAll(withUnit)) {
+    const min = Number(match[1]);
+    const sec = Number(match[2]);
 
-  const labelled =
-    cleaned.match(
-      /(?:pace|pac[e3])[\s\S]{0,35}?(\d{1,3})\s*[:;]\s*(\d{1,2})\s*(?:\/|\s)?\s*k[mn]/i
-    );
-
-  if (labelled) {
-    return {
-      min: Number(labelled[1]),
-      sec: Number(labelled[2])
-    };
+    if (min >= 0 && min <= 60 && sec >= 0 && sec < 60) {
+      candidates.push({
+        value: (min * 60) + sec,
+        confidence: 3,
+        raw: match[0]
+      });
+    }
   }
 
-  const generic =
-    cleaned.match(
-      /(\d{1,3})\s*[:;]\s*(\d{1,2})\s*(?:\/|\s)?\s*k[mn]/i
-    );
-
-  if (!generic) return null;
-
-  return {
-    min: Number(generic[1]),
-    sec: Number(generic[2])
-  };
+  return dedupeNumericCandidates(candidates, 1);
 }
 
-function parseDuration(text) {
-  const cleaned = text
-    .replace(/[Oo](?=\s*s|\d)/gi, "0")
-    .replace(/\bl\b/gi, "1");
+function collectDurationCandidates(text) {
+  const cleaned = numericCleanup(text);
+  const candidates = [];
 
-  let match =
-    cleaned.match(
-      /(?:time|duration)[\s\S]{0,35}?(\d{1,3})\s*m(?:in)?\s*(\d{1,2})?\s*s?/i
-    );
+  const hourPattern =
+    /(\d{1,2})\s*h\s*(\d{1,2})\s*m(?:in)?\s*(\d{1,2})?\s*s?/gi;
 
-  if (match) {
-    return {
-      hour: 0,
-      min: Number(match[1]),
-      sec: Number(match[2] || 0)
-    };
+  for (const match of cleaned.matchAll(hourPattern)) {
+    const h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = Number(match[3] || 0);
+
+    if (m < 60 && s < 60) {
+      candidates.push({
+        value: (h * 3600) + (m * 60) + s,
+        confidence: 3,
+        raw: match[0]
+      });
+    }
   }
 
-  match =
-    cleaned.match(
-      /(\d{1,3})\s*m(?:in)?\s*(\d{1,2})\s*s/i
-    );
+  const minutePattern =
+    /(\d{1,3})\s*m(?:in)?\s*(\d{1,2})\s*s/gi;
 
-  if (match) {
-    return {
-      hour: 0,
-      min: Number(match[1]),
-      sec: Number(match[2])
-    };
+  for (const match of cleaned.matchAll(minutePattern)) {
+    const m = Number(match[1]);
+    const s = Number(match[2]);
+
+    if (s < 60) {
+      candidates.push({
+        value: (m * 60) + s,
+        confidence: 3,
+        raw: match[0]
+      });
+    }
   }
 
-  match =
-    cleaned.match(
-      /(\d{1,2})\s*h\s*(\d{1,2})\s*m(?:in)?\s*(\d{1,2})?\s*s?/i
-    );
+  const labelledClock =
+    /(?:time|duration)[\s\S]{0,45}?(\d{1,2})\s*[:;]\s*(\d{2})(?:\s*[:;]\s*(\d{2}))?/gi;
 
-  if (match) {
-    return {
-      hour: Number(match[1]),
-      min: Number(match[2]),
-      sec: Number(match[3] || 0)
-    };
+  for (const match of cleaned.matchAll(labelledClock)) {
+    const a = Number(match[1]);
+    const b = Number(match[2]);
+    const c = match[3] !== undefined ? Number(match[3]) : null;
+
+    let seconds;
+
+    if (c !== null) {
+      seconds = (a * 3600) + (b * 60) + c;
+    } else {
+      seconds = (a * 60) + b;
+    }
+
+    candidates.push({
+      value: seconds,
+      confidence: 2,
+      raw: match[0]
+    });
   }
 
-  return null;
+  return dedupeNumericCandidates(candidates, 1);
 }
 
-function secondsFromDuration(value) {
-  if (!value) return null;
+function dedupeNumericCandidates(candidates, tolerance) {
+  const sorted = [...candidates]
+    .sort((a, b) => b.confidence - a.confidence);
 
-  return (
-    (Number(value.hour || 0) * 3600) +
-    (Number(value.min || 0) * 60) +
-    Number(value.sec || 0)
-  );
+  const result = [];
+
+  for (const candidate of sorted) {
+    const duplicate = result.some(existing =>
+      Math.abs(existing.value - candidate.value) <= tolerance
+    );
+
+    if (!duplicate) {
+      result.push(candidate);
+    }
+  }
+
+  return result;
 }
 
-function secondsFromPace(value) {
-  if (!value) return null;
+function parseSportType(sourceText) {
+  const text = String(sourceText || "").toLowerCase();
 
-  return (
-    (Number(value.min || 0) * 60) +
-    Number(value.sec || 0)
-  );
+  if (/\b(run|running)\b/.test(text)) return "RUN";
+  if (/\b(ride|cycling|bike)\b/.test(text)) return "RIDE";
+  if (/\b(swim|swimming)\b/.test(text)) return "SWIM";
+  if (/\b(walk|walking)\b/.test(text)) return "WALK";
+
+  return "UNKNOWN";
 }
 
 function formatDuration(seconds) {
@@ -379,64 +432,222 @@ function formatPace(seconds) {
   );
 }
 
-function parseSportType(sourceText) {
-  const text = String(sourceText || "").toLowerCase();
+function evaluateCombination(distanceKm, durationSec, paceSec) {
+  const missing =
+    [distanceKm, durationSec, paceSec]
+      .filter(value => value === null || value === undefined)
+      .length;
 
-  if (/\b(run|running)\b/.test(text)) return "RUN";
-  if (/\b(ride|cycling|bike)\b/.test(text)) return "RIDE";
-  if (/\b(swim|swimming)\b/.test(text)) return "SWIM";
-  if (/\b(walk|walking)\b/.test(text)) return "WALK";
-
-  return "UNKNOWN";
-}
-
-function validateActivity(distanceKm, durationSec, paceSec) {
-  if (!distanceKm || !durationSec || !paceSec) {
+  if (missing > 0) {
     return {
-      status: "NEEDS_REVIEW",
-      message: "One or more required metrics were not detected.",
+      score: -100 - (missing * 10),
       differenceSec: null,
       expectedPaceSec: null
     };
   }
 
-  // Very short activities are heavily affected by rounding.
-  if (distanceKm < 0.2) {
+  if (distanceKm <= 0 || durationSec <= 0 || paceSec <= 0) {
     return {
-      status: "SKIPPED_SHORT_ACTIVITY",
-      message: "Consistency check skipped for very short distance.",
+      score: -999,
+      differenceSec: null,
+      expectedPaceSec: null
+    };
+  }
+
+  if (distanceKm < 0.2) {
+    // Very short activities are too sensitive to rounding.
+    return {
+      score: 20,
       differenceSec: null,
       expectedPaceSec: durationSec / distanceKm
     };
   }
 
   const expected = durationSec / distanceKm;
-  const difference = Math.abs(expected - paceSec);
+  const diff = Math.abs(expected - paceSec);
 
-  if (difference <= 15) {
-    return {
-      status: "MATCHED",
-      message: "Distance, duration and pace are mathematically consistent.",
-      differenceSec: difference,
-      expectedPaceSec: expected
-    };
-  }
+  let score;
 
-  if (difference <= 45) {
-    return {
-      status: "CHECK",
-      message: "Metrics are close but should be confirmed by the athlete.",
-      differenceSec: difference,
-      expectedPaceSec: expected
-    };
+  if (diff <= 15) {
+    score = 120 - diff;
+  } else if (diff <= 45) {
+    score = 75 - diff;
+  } else {
+    score = Math.max(-80, 20 - diff);
   }
 
   return {
-    status: "MISMATCH",
-    message: "Metrics are not mathematically consistent.",
-    differenceSec: difference,
+    score,
+    differenceSec: diff,
     expectedPaceSec: expected
   };
+}
+
+function chooseBestMetrics(allCandidates) {
+  const distances = allCandidates.distances.slice(0, 8);
+  const durations = allCandidates.durations.slice(0, 8);
+  const paces = allCandidates.paces.slice(0, 8);
+
+  let best = null;
+
+  for (const distance of distances) {
+    for (const duration of durations) {
+      for (const pace of paces) {
+        const check =
+          evaluateCombination(
+            distance.value,
+            duration.value,
+            pace.value
+          );
+
+        const confidenceBonus =
+          distance.confidence +
+          duration.confidence +
+          pace.confidence;
+
+        const totalScore =
+          check.score +
+          confidenceBonus;
+
+        if (!best || totalScore > best.totalScore) {
+          best = {
+            distanceKm: distance.value,
+            durationSec: duration.value,
+            paceSec: pace.value,
+            totalScore,
+            differenceSec: check.differenceSec,
+            expectedPaceSec: check.expectedPaceSec,
+            selectedRaw: {
+              distance: distance.raw,
+              duration: duration.raw,
+              pace: pace.raw
+            }
+          };
+        }
+      }
+    }
+  }
+
+  // Fallback to individually strongest values if a complete triplet was not found.
+  if (!best) {
+    return {
+      distanceKm: distances.length ? distances[0].value : null,
+      durationSec: durations.length ? durations[0].value : null,
+      paceSec: paces.length ? paces[0].value : null,
+      totalScore: -100,
+      differenceSec: null,
+      expectedPaceSec: null,
+      selectedRaw: {}
+    };
+  }
+
+  return best;
+}
+
+function buildValidation(metrics) {
+  const {
+    distanceKm,
+    durationSec,
+    paceSec,
+    differenceSec,
+    expectedPaceSec
+  } = metrics;
+
+  if (!distanceKm || !durationSec || !paceSec) {
+    return {
+      status: "NEEDS_REVIEW",
+      message: "One or more required metrics were not detected.",
+      expectedPaceSec
+    };
+  }
+
+  if (distanceKm < 0.2) {
+    return {
+      status: "SKIPPED_SHORT_ACTIVITY",
+      message: "Consistency check skipped for very short activity.",
+      expectedPaceSec
+    };
+  }
+
+  if (differenceSec <= 15) {
+    return {
+      status: "MATCHED",
+      message: "Distance, duration and pace are mathematically consistent.",
+      expectedPaceSec
+    };
+  }
+
+  if (differenceSec <= 45) {
+    return {
+      status: "CHECK",
+      message: "Metrics are close but athlete confirmation is recommended.",
+      expectedPaceSec
+    };
+  }
+
+  // Important: do not silently "fix" OCR values.
+  // We only provide a derived suggestion so the athlete/admin can confirm it.
+  return {
+    status: "MISMATCH",
+    message:
+      "OCR metrics conflict. Do not auto-submit. " +
+      "Use the calculated pace/distance relationship as a review hint.",
+    expectedPaceSec
+  };
+}
+
+async function recognizeCanvas(worker, canvas, psm) {
+  await worker.setParameters({
+    preserve_interword_spaces: "1",
+    tessedit_pageseg_mode: String(psm)
+  });
+
+  const result = await worker.recognize(canvas);
+
+  return normalizeOcrText(
+    result &&
+    result.data &&
+    result.data.text
+      ? result.data.text
+      : ""
+  );
+}
+
+function addCandidateText(bucket, text, roiName, passName) {
+  const distanceList = collectDistanceCandidates(text);
+  const durationList = collectDurationCandidates(text);
+  const paceList = collectPaceCandidates(text);
+
+  distanceList.forEach(item =>
+    bucket.distances.push({
+      ...item,
+      source: roiName + "/" + passName
+    })
+  );
+
+  durationList.forEach(item =>
+    bucket.durations.push({
+      ...item,
+      source: roiName + "/" + passName
+    })
+  );
+
+  paceList.forEach(item =>
+    bucket.paces.push({
+      ...item,
+      source: roiName + "/" + passName
+    })
+  );
+}
+
+function extractionCompleteness(bucket) {
+  let count = 0;
+
+  if (bucket.distances.length) count++;
+  if (bucket.durations.length) count++;
+  if (bucket.paces.length) count++;
+
+  return count;
 }
 
 async function runSmartExtraction(imageBlob, sourceText) {
@@ -446,53 +657,118 @@ async function runSmartExtraction(imageBlob, sourceText) {
 
   const image = await loadImageFromBlob(imageBlob);
   const layout = classifyLayout(image);
-  const roi = getRoi(layout, image);
-  const processedCanvas = preprocessRoi(image, roi, layout);
-
-  setSmartStatus("OCR on stats region...");
-  setSmartProgress(0);
-
+  const rois = getCandidateRois(layout, image);
   const worker = await getSmartWorker();
 
-  const result = await worker.recognize(processedCanvas);
+  const allCandidates = {
+    distances: [],
+    durations: [],
+    paces: []
+  };
 
-  const rawText = normalizeOcrText(
-    result &&
-    result.data &&
-    result.data.text
-      ? result.data.text
-      : ""
-  );
+  const debugPasses = [];
+  const totalPasses =
+    layout.name === "MAP_CARD"
+      ? rois.length
+      : rois.length * 2;
 
-  const distanceKm = parseDistance(rawText);
+  let passCounter = 0;
 
-  const paceObject = parsePace(rawText);
-  const paceSec = secondsFromPace(paceObject);
+  for (const roi of rois) {
+    const canvas = preprocessRoi(image, roi, layout);
 
-  const durationObject = parseDuration(rawText);
-  const durationSec = secondsFromDuration(durationObject);
+    // PSM 6 = assume one uniform block.
+    setSmartStatus("Scanning " + roi.name + "...");
+    const textPsm6 = await recognizeCanvas(worker, canvas, 6);
 
-  const sportType = parseSportType(sourceText);
+    passCounter++;
+    setSmartProgress((passCounter / totalPasses) * 100);
 
-  const validation =
-    validateActivity(
-      distanceKm,
-      durationSec,
-      paceSec
+    addCandidateText(
+      allCandidates,
+      textPsm6,
+      roi.name,
+      "PSM6"
     );
 
+    debugPasses.push({
+      roiName: roi.name,
+      passName: "PSM6",
+      text: textPsm6,
+      canvas
+    });
+
+    // If the map card already yielded everything, avoid extra work.
+    if (
+      layout.name === "MAP_CARD" &&
+      extractionCompleteness(allCandidates) === 3
+    ) {
+      break;
+    }
+
+    // Dark cards often have tiny, sparse horizontal text.
+    // PSM 11 handles sparse text better, so give every black ROI a second pass.
+    if (layout.name.startsWith("BLACK")) {
+      setSmartStatus("Sparse-text scan " + roi.name + "...");
+
+      const textPsm11 = await recognizeCanvas(worker, canvas, 11);
+
+      passCounter++;
+      setSmartProgress((passCounter / totalPasses) * 100);
+
+      addCandidateText(
+        allCandidates,
+        textPsm11,
+        roi.name,
+        "PSM11"
+      );
+
+      debugPasses.push({
+        roiName: roi.name,
+        passName: "PSM11",
+        text: textPsm11,
+        canvas
+      });
+    }
+
+    // Stop early when we already have a mathematically good triplet.
+    if (extractionCompleteness(allCandidates) === 3) {
+      const provisional = chooseBestMetrics(allCandidates);
+
+      if (
+        provisional &&
+        provisional.differenceSec !== null &&
+        provisional.differenceSec <= 15
+      ) {
+        break;
+      }
+    }
+  }
+
+  const metrics = chooseBestMetrics(allCandidates);
+  const validation = buildValidation(metrics);
+
   setSmartProgress(100);
-  setSmartStatus("SMART EXTRACTION COMPLETE ✅", "ok");
+
+  if (validation.status === "MATCHED") {
+    setSmartStatus("SMART EXTRACTION COMPLETE ✅", "ok");
+  } else {
+    setSmartStatus(
+      "EXTRACTION COMPLETE — REVIEW NEEDED",
+      validation.status === "MISMATCH" ? "error" : "normal"
+    );
+  }
 
   return {
     layout,
-    rawText,
-    processedCanvas,
-    sportType,
-    distanceKm,
-    durationSec,
-    paceSec,
-    validation
+    sportType: parseSportType(sourceText),
+    distanceKm: metrics.distanceKm,
+    durationSec: metrics.durationSec,
+    paceSec: metrics.paceSec,
+    validation,
+    selectedRaw: metrics.selectedRaw,
+    debugPasses,
+    candidates: allCandidates
   };
 }
 

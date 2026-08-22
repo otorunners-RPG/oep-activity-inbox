@@ -1,40 +1,44 @@
-# OEP Activity Inbox — Checkpoint 11.2B
+# OEP Activity Inbox — Checkpoint 11.2B.1
 
-Smart Activity Extractor POC.
+Adaptive Smart Activity Extractor.
 
-Changes from 11.2A:
-- Detects a rough Strava share-card layout.
-- Crops the expected statistics region.
-- Upscales it locally.
-- Converts it to high-contrast black/white.
-- OCRs only the stats region.
-- Parses Distance / Duration / Pace.
-- Derives Sport Type from shared Strava text.
-- Runs a mathematical consistency check.
-- Keeps raw OCR and preprocessed image under a debug disclosure.
+Why this update exists:
+- Strava share cards use multiple layouts.
+- Some dark cards put large vertical stats near the top.
+- Others put tiny horizontal stats near the bottom.
+- A fixed BLACK_VERTICAL crop worked for some cards but missed others.
 
-No Google Sheet write is performed yet.
+This version:
+- Runs multiple ROI candidates on dark cards.
+- Tries both PSM 6 (block text) and PSM 11 (sparse text).
+- Upscales bottom bands more aggressively.
+- Collects multiple Distance / Duration / Pace candidates.
+- Chooses the triplet with the best mathematical consistency.
+- Does NOT silently correct conflicting OCR data.
+- A mismatch remains NEEDS REVIEW / MISMATCH.
+- Debug view exposes every adaptive OCR pass.
 
-## Update existing GitHub repo
+## Update
 
-Replace/upload the complete contents of this package into the root of the existing `oep-activity-inbox` repository.
+Upload/replace the whole package in the root of the existing
+`oep-activity-inbox` repository.
 
-The service-worker cache is now `v4`.
+Service worker cache: v5.
 
-After deployment:
-1. Open `https://otorunners-rpg.github.io/oep-activity-inbox/?v=4`
-2. Confirm the page says `Checkpoint 11.2B — Smart Activity Extractor`.
-3. On Android, reopen/reinstall the PWA if an older UI is retained.
-4. Share the same three Strava overlay variants again.
-5. Tap `SMART EXTRACT ACTIVITY`.
-6. Record:
-   - Detected Layout
-   - Distance
-   - Duration
-   - Pace
-   - Validation status
-   - Raw Region OCR if any field is wrong.
+Open:
+`https://otorunners-rpg.github.io/oep-activity-inbox/?v=5`
 
-Expected validation for the 8.09 km / 58m 6s / 7:10 per km sample:
-- Calculated pace is approximately 7:11/km.
-- Validation should normally be MATCHED.
+Expected title:
+`Checkpoint 11.2B.1 — Adaptive Smart Extractor`
+
+Retest the same four Strava share-card variants.
+
+For each test record:
+- Detected Layout
+- Distance
+- Duration
+- Pace
+- Validation
+
+If a result is wrong, expand SHOW OCR DEBUG and capture the relevant
+BLACK_TOP_STACK / BLACK_BOTTOM_BAND / BLACK_WIDE_LOWER passes.

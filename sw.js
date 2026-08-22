@@ -1,6 +1,6 @@
 importScripts("./db.js");
 
-const CACHE_NAME = "oep-activity-inbox-poc-v4";
+const CACHE_NAME = "oep-activity-inbox-poc-v5";
 
 const APP_SHELL = [
   "./",
