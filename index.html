@@ -90,6 +90,36 @@
       padding-left: 22px;
       line-height: 1.7;
     }
+  
+    input[type="text"] {
+      width: 100%;
+      margin-top: 10px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #071a12;
+      color: var(--text);
+      font: inherit;
+      text-transform: uppercase;
+    }
+
+    .pair-status {
+      margin-top: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .pair-status.ok {
+      color: var(--ok);
+      font-weight: 800;
+    }
+
+    .button-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
   </style>
 </head>
 
@@ -97,7 +127,7 @@
 <main>
 
   <h1>OEP ACTIVITY INBOX</h1>
-  <p class="subtitle">Checkpoint 11.2D — Google Sheet Submission</p>
+  <p class="subtitle">Checkpoint 11.2E — Athlete Identity / Mapping</p>
 
   <section class="card">
     <div class="row">
@@ -115,15 +145,46 @@
     </button>
   </section>
 
+
+  <section class="card">
+    <h2>ATHLETE PAIRING</h2>
+
+    <p class="subtitle">
+      Pair this device once using the Participant Code from the ATHLETES sheet.
+    </p>
+
+    <div class="row">
+      <span>Current Participant</span>
+      <span id="currentParticipantCode" class="value">NOT PAIRED</span>
+    </div>
+
+    <input
+      id="participantCodeInput"
+      type="text"
+      autocomplete="off"
+      placeholder="Example: OEP-A001"
+    >
+
+    <button id="savePairingButton">
+      SAVE THIS DEVICE
+    </button>
+
+    <button id="clearPairingButton" class="button-secondary">
+      CLEAR PAIRING
+    </button>
+
+    <div id="pairingStatus" class="pair-status"></div>
+  </section>
+
   <section class="card">
     <h2>Current Test</h2>
 
     <ol>
+      <li>Pair this device with one Participant Code.</li>
       <li>Share a normal GPS activity from Strava.</li>
       <li>Select <strong>Send to OEP</strong>.</li>
-      <li>Tap <strong>SMART EXTRACT ACTIVITY</strong>.</li>
-      <li>Check detected Distance, Duration and Pace.</li>
-      <li>Review the mathematical consistency result.</li>
+      <li>Extract and confirm the activity.</li>
+      <li>Verify the row maps to the correct athlete in ACTIVITY_INBOX.</li>
     </ol>
   </section>
 
@@ -134,5 +195,89 @@
 </main>
 
 <script src="./app.js"></script>
+<script src="./pairing.js"></script>
+
+<script>
+  function refreshPairingUi() {
+    const code =
+      getPairedParticipantCode();
+
+    const current =
+      document.querySelector(
+        "#currentParticipantCode"
+      );
+
+    const input =
+      document.querySelector(
+        "#participantCodeInput"
+      );
+
+    const status =
+      document.querySelector(
+        "#pairingStatus"
+      );
+
+    if (code) {
+      current.textContent = code;
+      input.value = code;
+      status.textContent =
+        "DEVICE PAIRED ✅";
+      status.className =
+        "pair-status ok";
+    } else {
+      current.textContent =
+        "NOT PAIRED";
+      input.value = "";
+      status.textContent =
+        "Pair this device before submitting activity.";
+      status.className =
+        "pair-status";
+    }
+  }
+
+  document
+    .querySelector("#savePairingButton")
+    .addEventListener(
+      "click",
+      () => {
+        try {
+          const input =
+            document.querySelector(
+              "#participantCodeInput"
+            );
+
+          savePairedParticipantCode(
+            input.value
+          );
+
+          refreshPairingUi();
+
+        } catch (error) {
+          const status =
+            document.querySelector(
+              "#pairingStatus"
+            );
+
+          status.textContent =
+            error.message;
+
+          status.className =
+            "pair-status";
+        }
+      }
+    );
+
+  document
+    .querySelector("#clearPairingButton")
+    .addEventListener(
+      "click",
+      () => {
+        clearPairedParticipantCode();
+        refreshPairingUi();
+      }
+    );
+
+  refreshPairingUi();
+</script>
 </body>
 </html>

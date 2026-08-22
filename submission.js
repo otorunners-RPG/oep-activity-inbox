@@ -5,10 +5,6 @@ const OEP_SUBMISSION_CONFIG = {
   ENDPOINT:
     "https://script.google.com/macros/s/AKfycbxHBw2BlpR6UdZrUAggLWmUN2SIaw8vIUNK9Rf_ckCm8vXOm0ksYlXgbOep5TLmMamqmA/exec",
 
-  // Temporary Android POC identity.
-  // Proper athlete/device mapping is handled later in Checkpoint 11.2E.
-  PARTICIPANT_CODE: "OEP-A001",
-
   SOURCE: "STRAVA_ANDROID_SHARE"
 };
 
@@ -41,13 +37,23 @@ async function submitConfirmedActivity(
   }
 
 
+  const participantCode =
+    getPairedParticipantCode();
+
+  if (!participantCode) {
+    throw new Error(
+      "DEVICE_NOT_PAIRED"
+    );
+  }
+
+
   const body =
     new URLSearchParams();
 
 
   body.set(
     "participantCode",
-    OEP_SUBMISSION_CONFIG.PARTICIPANT_CODE
+    participantCode
   );
 
   body.set(
@@ -136,7 +142,7 @@ async function submitConfirmedActivity(
   return {
     sent: true,
     participantCode:
-      OEP_SUBMISSION_CONFIG.PARTICIPANT_CODE,
+      participantCode,
     source:
       OEP_SUBMISSION_CONFIG.SOURCE
   };

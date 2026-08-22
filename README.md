@@ -1,27 +1,45 @@
-# OEP Activity Inbox — Checkpoint 11.2D
+# OEP Activity Inbox — Checkpoint 11.2E
 
-Scope only:
-- Submit a MATCHED + confirmed structured activity to Google Sheet.
-- No participant edit.
-- No device pairing redesign.
+Athlete Identity / Mapping only.
+
+Scope:
+- Remove the hardcoded OEP-A001 from submission.
+- Pair one browser/PWA device to one participantCode.
+- Store participantCode locally in the device.
+- Use that participantCode for subsequent confirmed activity submissions.
+- Existing Apps Script 11.2D resolves participantCode -> athleteId using ATHLETES.
+
+Not included:
+- No QR pairing.
+- No token/hash redesign.
+- No login/authentication.
 - No duplicate logic.
-- No Admin OEP integration yet.
+- No Admin OEP integration.
+- No activity edit.
 
-Temporary Android POC mapping:
-- participantCode = OEP-A001
-- athleteId resolves in Apps Script to ATH001
+Apps Script:
+- Keep the already deployed Checkpoint 11.2D Apps Script unchanged.
 
-Files:
-- Upload this package to the existing GitHub repo root.
-- Update Apps Script with the separate full `Code-11.2D.gs` file.
-- Keep your existing Spreadsheet ID in CONFIG.
-
-Web endpoint is already configured in `submission.js`.
-
-Service worker cache: v8
+Service worker cache:
+- v9
 
 Open:
-https://otorunners-rpg.github.io/oep-activity-inbox/?v=8
+https://otorunners-rpg.github.io/oep-activity-inbox/?v=9
 
 Expected title:
-Checkpoint 11.2D — Google Sheet Submission
+Checkpoint 11.2E — Athlete Identity / Mapping
+
+Test:
+1. Home -> enter OEP-A001 -> SAVE THIS DEVICE.
+2. Submit a MATCHED activity.
+3. ACTIVITY_INBOX should map participantCode OEP-A001 -> athleteId ATH001.
+4. Clear pairing.
+5. Enter OEP-A002 -> SAVE THIS DEVICE.
+6. Submit a MATCHED activity.
+7. ACTIVITY_INBOX should map participantCode OEP-A002 -> athleteId ATH002.
+
+Acceptance:
+- No hardcoded participantCode remains in submission.js.
+- Unpaired device cannot confirm/submit.
+- Paired code persists after closing/reopening PWA.
+- Submission row maps to the correct ATHLETES row.

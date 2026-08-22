@@ -298,7 +298,7 @@
 
   <h1>SMART ACTIVITY EXTRACTOR</h1>
   <p class="subtitle">
-    Checkpoint 11.2D — submit confirmed structured activity to Google Sheet.
+    Checkpoint 11.2E — submit activity using the paired athlete identity.
   </p>
 
   <section id="statusCard" class="card">
@@ -306,6 +306,11 @@
   </section>
 
   <section id="payloadCard" class="card" hidden>
+
+    <div class="field">
+      <span class="label">Paired Participant</span>
+      <span id="pairedParticipantCode" class="value"></span>
+    </div>
 
     <div class="field">
       <span class="label">Shared Text</span>
@@ -424,6 +429,7 @@
 <script src="./app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="./smart-extractor.js"></script>
+<script src="./pairing.js"></script>
 <script src="./submission.js"></script>
 
 <script>
@@ -479,6 +485,14 @@
         '<span class="ok">PAYLOAD RECEIVED ✅</span>';
 
       currentSourceText = String(payload.text || "");
+
+      const pairedCode =
+        getPairedParticipantCode();
+
+      document.querySelector(
+        "#pairedParticipantCode"
+      ).textContent =
+        pairedCode || "NOT PAIRED";
 
       document.querySelector("#sourceText").textContent =
         textOrDash(payload.text);
@@ -687,13 +701,28 @@
         confirmationSection.hidden = false;
         confirmSuccess.hidden = true;
 
-        if (result.validation.status === "MATCHED") {
+        const pairedCode =
+          getPairedParticipantCode();
+
+        if (
+          result.validation.status === "MATCHED" &&
+          pairedCode
+        ) {
           confirmButton.hidden = false;
           confirmButton.disabled = false;
           confirmBlocked.hidden = true;
+
         } else {
           confirmButton.hidden = true;
           confirmBlocked.hidden = false;
+
+          if (!pairedCode) {
+            confirmBlocked.textContent =
+              "This device is not paired. Return to Home and save the Participant Code first.";
+          } else {
+            confirmBlocked.textContent =
+              "Activity cannot be confirmed because validation did not pass.";
+          }
         }
 
         resultPanel.hidden = false;
