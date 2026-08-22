@@ -147,21 +147,35 @@ function getCandidateRois(layout, image) {
   return [
     makeRoi(image, 0.04, 0.04, 0.92, 0.62, "BLACK_TOP_STACK"),
     makeRoi(image, 0.02, 0.48, 0.96, 0.50, "BLACK_BOTTOM_BAND"),
-    makeRoi(image, 0.01, 0.30, 0.98, 0.68, "BLACK_WIDE_LOWER")
+    makeRoi(image, 0.01, 0.30, 0.98, 0.68, "BLACK_WIDE_LOWER"),
+
+    // Dedicated tiny bottom-strip candidates for the remaining failing layout.
+    makeRoi(image, 0.02, 0.70, 0.96, 0.16, "BLACK_TINY_BOTTOM_STRIP"),
+    makeRoi(image, 0.00, 0.69, 1.00, 0.18, "BLACK_TINY_BOTTOM_WIDE"),
+
+    // Split the tiny bottom band into 3 metric cells.
+    makeRoi(image, 0.02, 0.69, 0.31, 0.18, "BLACK_CELL_DISTANCE"),
+    makeRoi(image, 0.34, 0.69, 0.31, 0.18, "BLACK_CELL_PACE"),
+    makeRoi(image, 0.67, 0.69, 0.31, 0.18, "BLACK_CELL_TIME")
   ];
 }
 
 function preprocessRoi(image, roi, layout) {
   const targetWidth =
-    roi.name.includes("BOTTOM") || roi.name.includes("WIDE")
-      ? 2200
-      : 1800;
+    roi.name.includes("TINY") || roi.name.includes("CELL")
+      ? 3000
+      : roi.name.includes("BOTTOM") || roi.name.includes("WIDE")
+        ? 2200
+        : 1800;
 
   const maxScale = 6;
 
   const scale = Math.min(
     maxScale,
-    Math.max(2.5, targetWidth / Math.max(roi.w, 1))
+    Math.max(
+      roi.name.includes("TINY") || roi.name.includes("CELL") ? 4 : 2.5,
+      targetWidth / Math.max(roi.w, 1)
+    )
   );
 
   const canvas = document.createElement("canvas");
@@ -618,26 +632,39 @@ function addCandidateText(bucket, text, roiName, passName) {
   const durationList = collectDurationCandidates(text);
   const paceList = collectPaceCandidates(text);
 
-  distanceList.forEach(item =>
-    bucket.distances.push({
-      ...item,
-      source: roiName + "/" + passName
-    })
-  );
+  const isDistanceCell = roiName.includes("DISTANCE");
+  const isPaceCell = roiName.includes("PACE");
+  const isTimeCell = roiName.includes("TIME");
 
-  durationList.forEach(item =>
-    bucket.durations.push({
-      ...item,
-      source: roiName + "/" + passName
-    })
-  );
+  if (!isPaceCell && !isTimeCell) {
+    distanceList.forEach(item =>
+      bucket.distances.push({
+        ...item,
+        confidence: item.confidence + (isDistanceCell ? 2 : 0),
+        source: roiName + "/" + passName
+      })
+    );
+  }
 
-  paceList.forEach(item =>
-    bucket.paces.push({
-      ...item,
-      source: roiName + "/" + passName
-    })
-  );
+  if (!isDistanceCell && !isPaceCell) {
+    durationList.forEach(item =>
+      bucket.durations.push({
+        ...item,
+        confidence: item.confidence + (isTimeCell ? 2 : 0),
+        source: roiName + "/" + passName
+      })
+    );
+  }
+
+  if (!isDistanceCell && !isTimeCell) {
+    paceList.forEach(item =>
+      bucket.paces.push({
+        ...item,
+        confidence: item.confidence + (isPaceCell ? 2 : 0),
+        source: roiName + "/" + passName
+      })
+    );
+  }
 }
 
 function extractionCompleteness(bucket) {
@@ -670,7 +697,9 @@ async function runSmartExtraction(imageBlob, sourceText) {
   const totalPasses =
     layout.name === "MAP_CARD"
       ? rois.length
-      : rois.length * 2;
+      : (rois.length * 2) + rois.filter(roi =>
+          roi.name.includes("TINY") || roi.name.includes("CELL")
+        ).length;
 
   let passCounter = 0;
 
@@ -729,6 +758,29 @@ async function runSmartExtraction(imageBlob, sourceText) {
         text: textPsm11,
         canvas
       });
+
+      if (roi.name.includes("TINY") || roi.name.includes("CELL")) {
+        setSmartStatus("Single-line scan " + roi.name + "...");
+
+        const textPsm7 = await recognizeCanvas(worker, canvas, 7);
+
+        passCounter++;
+        setSmartProgress((passCounter / totalPasses) * 100);
+
+        addCandidateText(
+          allCandidates,
+          textPsm7,
+          roi.name,
+          "PSM7"
+        );
+
+        debugPasses.push({
+          roiName: roi.name,
+          passName: "PSM7",
+          text: textPsm7,
+          canvas
+        });
+      }
     }
 
     // Stop early when we already have a mathematically good triplet.
