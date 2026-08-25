@@ -68,10 +68,39 @@
   function setStatus(text,type="") { el("statusBox").textContent=text; el("statusBox").className="status"+(type?" "+type:""); }
   function formatDate(value) {
     if (!value) return "";
-    const key=String(value).slice(0,10); const parts=key.split("-");
-    if (parts.length!==3) return String(value);
-    const date=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
-    return date.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"});
+    const raw = String(value).trim();
+
+    // Snapshot stage dates may arrive as UTC ISO timestamps that represent
+    // midnight in WIB, e.g. 2026-08-02T17:00:00.000Z = 03 Aug 2026 WIB.
+    // Always render participant-facing competition dates in Asia/Jakarta.
+    const date = new Date(raw);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString("en-GB", {
+        timeZone: "Asia/Jakarta",
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    }
+
+    // Safe fallback for plain YYYY-MM-DD values.
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const safeDate = new Date(Date.UTC(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]),
+        12, 0, 0
+      ));
+      return safeDate.toLocaleDateString("en-GB", {
+        timeZone: "Asia/Jakarta",
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    }
+
+    return raw;
   }
   function period(start,end) { const a=formatDate(start), b=formatDate(end); return a&&b ? a+" – "+b : (a||b||""); }
   function targetLabel(item) {
