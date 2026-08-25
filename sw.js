@@ -1,6 +1,6 @@
 importScripts("./db.js");
 
-const CACHE_NAME = "oep-activity-inbox-poc-v9";
+const CACHE_NAME = "oep-activity-inbox-poc-v10";
 
 const APP_SHELL = [
   "./",
@@ -11,6 +11,7 @@ const APP_SHELL = [
   "./smart-extractor.js",
   "./submission.js",
   "./pairing.js",
+  "./assets/oto-runners-logo.png",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

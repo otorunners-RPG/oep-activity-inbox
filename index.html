@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#071a12">
 
-  <title>OEP Activity Inbox — Smart Extractor</title>
+  <title>OTO Runners - RPG — Activity Inbox</title>
 
   <link rel="manifest" href="./manifest.webmanifest">
 
@@ -41,9 +41,20 @@
       color: var(--accent);
     }
 
+    .brand-logo {
+      display: block;
+      width: min(100%, 340px);
+      height: auto;
+      margin: 0 0 18px;
+      object-fit: contain;
+    }
+
     .subtitle {
       margin-top: 0;
-      color: var(--muted);
+      color: var(--accent);
+      font-weight: 900;
+      letter-spacing: .20em;
+      text-transform: uppercase;
     }
 
     .card {
@@ -120,14 +131,50 @@
       border: 1px solid var(--line);
     }
 
+
+    .setup-code-box {
+      margin-top: 16px;
+      padding: 18px;
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      background: rgba(7,26,18,.58);
+      text-align: center;
+    }
+
+    .setup-code-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: .82rem;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .setup-code {
+      display: block;
+      color: var(--accent);
+      font-size: clamp(1.8rem, 8vw, 2.5rem);
+      font-weight: 950;
+      letter-spacing: .08em;
+    }
+
+    .setup-note {
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    [hidden] { display: none !important; }
+
   </style>
 </head>
 
 <body>
 <main>
-
-  <h1>OEP ACTIVITY INBOX</h1>
-  <p class="subtitle">Checkpoint 11.2E — Athlete Identity / Mapping</p>
+  <img class="brand-logo" src="./assets/oto-runners-logo.png" alt="OTO Runners">
+  <h1>RPG ACTIVITY INBOX</h1>
+  <p class="subtitle">RUN PLAYING GAMES</p>
 
   <section class="card">
     <div class="row">
@@ -141,7 +188,7 @@
     </div>
 
     <button id="installButton" hidden>
-      INSTALL OEP ACTIVITY INBOX
+      INSTALL OTO RUNNERS RPG
     </button>
   </section>
 
@@ -150,7 +197,7 @@
     <h2>ATHLETE PAIRING</h2>
 
     <p class="subtitle">
-      Pair this device once using the Participant Code from the ATHLETES sheet.
+      Pair this device once using the Participant Code provided by the committee.
     </p>
 
     <div class="row">
@@ -177,19 +224,47 @@
   </section>
 
   <section class="card">
-    <h2>Current Test</h2>
+    <h2>IPHONE SHORTCUT SETUP</h2>
+
+    <p class="subtitle">
+      Set up once. After pairing, you will not need to enter Participant Code again when sharing.
+    </p>
+
+    <button id="iphoneSetupButton">
+      SET UP SEND TO OTO RUNNERS RPG
+    </button>
+
+    <div id="iphoneSetupResult" class="setup-code-box" hidden>
+      <span class="setup-code-label">ONE-TIME SETUP CODE</span>
+      <strong id="iphoneSetupCode" class="setup-code">—</strong>
+
+      <p id="iphoneSetupNote" class="setup-note">
+        Enter this code once inside the Send To OTO Runners RPG Shortcut.
+      </p>
+
+      <button id="copySetupCodeButton" class="button-secondary">
+        COPY SETUP CODE
+      </button>
+    </div>
+
+    <div id="iphoneSetupStatus" class="pair-status"></div>
+  </section>
+
+
+  <section class="card">
+    <h2>HOW TO SEND ACTIVITY</h2>
 
     <ol>
-      <li>Pair this device with one Participant Code.</li>
-      <li>Share a normal GPS activity from Strava.</li>
-      <li>Select <strong>Send to OEP</strong>.</li>
-      <li>Extract and confirm the activity.</li>
-      <li>Verify the row maps to the correct athlete in ACTIVITY_INBOX.</li>
+      <li>Pair this device once with your Participant Code.</li>
+      <li><strong>iPhone:</strong> run Shortcut setup once using the Setup Code above.</li>
+      <li>Open Strava and share a normal GPS activity.</li>
+      <li>Select <strong>Send To OTO Runners RPG</strong> on iPhone or <strong>OTO Runners RPG</strong> on Android.</li>
+      <li>Wait for the activity confirmation.</li>
     </ol>
   </section>
 
   <a class="button" href="./share.html">
-    OPEN SMART EXTRACTOR
+    OPEN ACTIVITY INBOX
   </a>
 
 </main>
@@ -276,6 +351,153 @@
         refreshPairingUi();
       }
     );
+
+
+  const iphoneSetupButton =
+    document.querySelector(
+      "#iphoneSetupButton"
+    );
+
+  const copySetupCodeButton =
+    document.querySelector(
+      "#copySetupCodeButton"
+    );
+
+  let latestIphoneSetupCode = "";
+
+
+  iphoneSetupButton
+    .addEventListener(
+      "click",
+      async () => {
+
+        const status =
+          document.querySelector(
+            "#iphoneSetupStatus"
+          );
+
+        const resultBox =
+          document.querySelector(
+            "#iphoneSetupResult"
+          );
+
+        const codeEl =
+          document.querySelector(
+            "#iphoneSetupCode"
+          );
+
+        try {
+
+          const participantCode =
+            getPairedParticipantCode();
+
+
+          if (!participantCode) {
+            throw new Error(
+              "Pair this device first using Participant Code."
+            );
+          }
+
+
+          status.textContent =
+            "Creating one-time Setup Code...";
+
+          status.className =
+            "pair-status";
+
+          iphoneSetupButton.disabled =
+            true;
+
+
+          const result =
+            await createIphonePairingSetupCode(
+              participantCode
+            );
+
+
+          latestIphoneSetupCode =
+            String(
+              result.setupCode || ""
+            );
+
+
+          codeEl.textContent =
+            latestIphoneSetupCode ||
+            "—";
+
+
+          document.querySelector(
+            "#iphoneSetupNote"
+          ).textContent =
+            "Valid for " +
+            String(
+              result.expiresInMinutes || 10
+            ) +
+            " minutes. Enter this code once inside the Send To OTO Runners RPG Shortcut.";
+
+
+          resultBox.hidden = false;
+
+          status.textContent =
+            "SETUP CODE READY ✅";
+
+          status.className =
+            "pair-status ok";
+
+        } catch (error) {
+
+          resultBox.hidden = true;
+
+          latestIphoneSetupCode = "";
+
+          status.textContent =
+            error.message ||
+            "Unable to create Setup Code.";
+
+          status.className =
+            "pair-status";
+
+        } finally {
+
+          iphoneSetupButton.disabled =
+            false;
+        }
+      }
+    );
+
+
+  copySetupCodeButton
+    .addEventListener(
+      "click",
+      async () => {
+
+        if (!latestIphoneSetupCode) {
+          return;
+        }
+
+
+        try {
+
+          await navigator.clipboard.writeText(
+            latestIphoneSetupCode
+          );
+
+
+          document.querySelector(
+            "#iphoneSetupStatus"
+          ).textContent =
+            "SETUP CODE COPIED ✅";
+
+        } catch (error) {
+
+          document.querySelector(
+            "#iphoneSetupStatus"
+          ).textContent =
+            "Copy failed. Enter the Setup Code manually.";
+        }
+      }
+    );
+
 
   refreshPairingUi();
 </script>
