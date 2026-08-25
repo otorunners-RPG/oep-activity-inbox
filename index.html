@@ -245,6 +245,17 @@
       <button id="copySetupCodeButton" class="button-secondary">
         COPY SETUP CODE
       </button>
+
+      <a
+        id="addShortcutButton"
+        class="button"
+        href="https://www.icloud.com/shortcuts/7012f4a7f8344140b1bcced97f42b1c4"
+        target="_blank"
+        rel="noopener noreferrer"
+        hidden
+      >
+        ADD SHORTCUT
+      </a>
     </div>
 
     <div id="iphoneSetupStatus" class="pair-status"></div>
@@ -256,7 +267,7 @@
 
     <ol>
       <li>Pair this device once with your Participant Code.</li>
-      <li><strong>iPhone:</strong> run Shortcut setup once using the Setup Code above.</li>
+      <li><strong>iPhone:</strong> generate a Setup Code, tap <strong>ADD SHORTCUT</strong>, then enter the Setup Code once on first use.</li>
       <li>Open Strava and share a normal GPS activity.</li>
       <li>Select <strong>Send To OTO Runners RPG</strong> on iPhone or <strong>OTO Runners RPG</strong> on Android.</li>
       <li>Wait for the activity confirmation.</li>
@@ -363,6 +374,11 @@
       "#copySetupCodeButton"
     );
 
+  const addShortcutButton =
+    document.querySelector(
+      "#addShortcutButton"
+    );
+
   let latestIphoneSetupCode = "";
 
 
@@ -437,6 +453,7 @@
 
 
           resultBox.hidden = false;
+          addShortcutButton.hidden = false;
 
           status.textContent =
             "SETUP CODE READY ✅";
@@ -447,6 +464,7 @@
         } catch (error) {
 
           resultBox.hidden = true;
+          addShortcutButton.hidden = true;
 
           latestIphoneSetupCode = "";
 
