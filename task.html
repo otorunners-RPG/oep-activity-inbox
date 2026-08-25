@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#06170f">
+  <title>OTO Runners - RPG — Task</title>
+  <link rel="stylesheet" href="./participant-site.css">
+</head>
+<body>
+  <header class="site-topbar">
+    <div class="site-shell site-topbar-inner">
+      <a class="brand-mark" href="./task.html" aria-label="OTO Runners - RPG Task">
+        <img src="./assets/oto-runners-logo.png" alt="OTO Runners">
+      </a>
+      <nav class="site-nav" aria-label="Participant navigation">
+        <a class="active" href="./task.html" aria-current="page">Task</a>
+        <a href="./leaderboard.html">Leaderboard</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="site-shell">
+      <section class="hero">
+        <h1>TASK</h1>
+        <p class="game-title">RUN PLAYING GAMES</p>
+        <p class="subtitle">Your current game board: Weekly Tasks, Side Missions, and Corporate Missions published for the active competition.</p>
+      </section>
+
+      <section id="stageCard" class="card stage-card" hidden>
+        <div>
+          <div class="stage-label">CURRENT STAGE / WEEK</div>
+          <div id="stageName" class="stage-name">-</div>
+          <div id="stagePeriod" class="stage-period">-</div>
+        </div>
+        <div id="stageStatus" class="stage-badge">PUBLISHED</div>
+      </section>
+
+      <div id="statusBox" class="status">Loading current tasks...</div>
+
+      <section class="section">
+        <div class="section-head"><h2>Weekly Tasks</h2><span id="weeklyCount">0 published</span></div>
+        <div id="weeklyGrid" class="grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h2>Side Missions</h2><span id="sideCount">0 active</span></div>
+        <div id="sideGrid" class="grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h2>Corporate Missions</h2><span id="corporateCount">0 active</span></div>
+        <div id="corporateGrid" class="grid"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer>OTO Runners - RPG • Run Playing Games</footer>
+
+<script>
+  const API_URL = "https://script.google.com/macros/s/AKfycbxHBw2BlpR6UdZrUAggLWmUN2SIaw8vIUNK9Rf_ckCm8vXOm0ksYlXgbOep5TLmMamqmA/exec?action=publicTaskSnapshot";
+  const el = (id) => document.getElementById(id);
+  const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[ch]));
+  const number = (value) => { const n = Number(value); return Number.isFinite(n) ? n : 0; };
+  const formatNumber = (value) => number(value).toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+  function setStatus(text,type="") { el("statusBox").textContent=text; el("statusBox").className="status"+(type?" "+type:""); }
+  function formatDate(value) {
+    if (!value) return "";
+    const key=String(value).slice(0,10); const parts=key.split("-");
+    if (parts.length!==3) return String(value);
+    const date=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+    return date.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"});
+  }
+  function period(start,end) { const a=formatDate(start), b=formatDate(end); return a&&b ? a+" – "+b : (a||b||""); }
+  function targetLabel(item) {
+    if (item.targetValue === "" || item.targetValue === null || item.targetValue === undefined) return "";
+    return formatNumber(item.targetValue) + (item.targetUnit ? " " + String(item.targetUnit).replaceAll("_"," ") : "");
+  }
+  function audienceLabel(type) {
+    const t=String(type||"").toUpperCase();
+    if (!t || t === "ALL_DIVISIONS") return "All Participants";
+    if (t === "SELECTED_GUILDS") return "Selected Guilds";
+    if (t === "SELECTED_DIVISIONS") return "Selected Divisions";
+    return t.replaceAll("_"," ");
+  }
+  function cardHtml(item,kind) {
+    let points = kind === "weekly" ? item.points : (kind === "side" ? item.defaultPoints : item.rewardPoints);
+    let target = kind === "side" ? "" : targetLabel(item);
+    let p = kind === "weekly" ? "" : period(item.startDate,item.endDate);
+    let kicker = kind === "weekly" ? (item.ruleType || "WEEKLY TASK") : (kind === "side" ? (item.code || "SIDE MISSION") : (item.code || "CORPORATE MISSION"));
+    let audience = kind === "side" ? "" : audienceLabel(item.appliesToType);
+    return '<article class="card challenge-card">' +
+      '<div class="challenge-kicker">'+escapeHtml(kicker)+'</div>' +
+      '<h3>'+escapeHtml(item.name||"Untitled")+'</h3>' +
+      '<p class="challenge-desc">'+escapeHtml(item.description||"Complete this challenge during the active period.")+'</p>' +
+      '<div class="challenge-stats">' +
+        (target ? '<span class="pill">Target <strong>'+escapeHtml(target)+'</strong></span>' : '') +
+        (points !== "" && points !== null && points !== undefined ? '<span class="pill"><strong>'+formatNumber(points)+'</strong> pts</span>' : '') +
+        (audience ? '<span class="pill">'+escapeHtml(audience)+'</span>' : '') +
+      '</div>' +
+      (p ? '<div class="challenge-period">'+escapeHtml(p)+'</div>' : '') +
+    '</article>';
+  }
+  function emptyHtml(message) { return '<div class="card empty-card">'+escapeHtml(message)+'</div>'; }
+  function renderList(id, items, kind, emptyMessage) { el(id).innerHTML = items.length ? items.map(item=>cardHtml(item,kind)).join("") : emptyHtml(emptyMessage); }
+
+  async function loadTasks() {
+    setStatus("Loading current published tasks...");
+    try {
+      const response=await fetch(API_URL+"&_="+Date.now(),{cache:"no-store"});
+      const payload=await response.json();
+      if(!response.ok||payload.success!==true) throw new Error(payload?.error?.message||"Unable to load task snapshot.");
+      const snapshot=payload.challengeSnapshot||{};
+      const stage=snapshot.stage||null;
+      const weekly=Array.isArray(snapshot.weeklyTasks)?snapshot.weeklyTasks:[];
+      const side=Array.isArray(snapshot.sideMissions)?snapshot.sideMissions:[];
+      const corporate=Array.isArray(snapshot.corporateMissions)?snapshot.corporateMissions:[];
+      if(stage) {
+        el("stageCard").hidden=false;
+        el("stageName").textContent=stage.stageName||stage.name||stage.stageId||"Current Stage";
+        el("stagePeriod").textContent=period(stage.startDate,stage.endDate)||"Current competition period";
+        el("stageStatus").textContent=String(stage.status||"PUBLISHED").toUpperCase();
+      } else { el("stageCard").hidden=true; }
+      el("weeklyCount").textContent=weekly.length+" published";
+      el("sideCount").textContent=side.length+" active";
+      el("corporateCount").textContent=corporate.length+" active";
+      renderList("weeklyGrid",weekly,"weekly","No published Weekly Task for the current stage.");
+      renderList("sideGrid",side,"side","No active Side Mission right now.");
+      renderList("corporateGrid",corporate,"corporate","No active Corporate Mission right now.");
+      const publishedAt=snapshot.publishedAt||payload.meta?.publishedAt||"";
+      setStatus("Task board loaded"+(publishedAt ? " • snapshot " + new Date(publishedAt).toLocaleString() : "")+".","ok");
+    } catch(error) {
+      setStatus(error.message||"Unable to load task snapshot.","error");
+      renderList("weeklyGrid",[],"weekly","Task snapshot is not available yet.");
+      renderList("sideGrid",[],"side","Task snapshot is not available yet.");
+      renderList("corporateGrid",[],"corporate","Task snapshot is not available yet.");
+    }
+  }
+  loadTasks();
+</script>
+</body>
+</html>
